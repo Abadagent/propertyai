@@ -2,13 +2,15 @@ from fastapi import APIRouter, Request
 import os
 import traceback
 
+from sqlalchemy import bindparam, String
+
 from app.core.db import SessionLocal
 from app.models.account import Account
 from app.models.webhook_event import WebhookEvent
 
 print("WEBHOOK_GREEN LOADED FROM:", __file__)
 print("WEBHOOK_GREEN PID:", os.getpid())
-print("WEBHOOK_GREEN VERSION: FORCE_DEBUG_V4")
+print("WEBHOOK_GREEN VERSION: BINDPARAM_STRING_V5")
 
 router = APIRouter()
 
@@ -24,7 +26,7 @@ async def webhook_green_post(request: Request):
 
     try:
         data = await request.json()
-        print("WEBHOOK_GREEN VERSION INSIDE REQUEST: FORCE_DEBUG_V4")
+        print("WEBHOOK_GREEN VERSION INSIDE REQUEST: BINDPARAM_STRING_V5")
         print("WEBHOOK DATA:", data)
 
         if data.get("typeWebhook") != "incomingMessageReceived":
@@ -63,13 +65,15 @@ async def webhook_green_post(request: Request):
         print("INSTANCE_ID AFTER CAST:", repr(instance_id), type(instance_id))
         print("MESSAGE_ID AFTER CAST:", repr(message_id), type(message_id))
 
-        # Временная жёсткая проверка
-        if not isinstance(instance_id, str):
-            raise Exception(f"instance_id is not str after cast: {type(instance_id)}")
-
         account = (
             db.query(Account)
-            .filter(Account.green_id_instance == instance_id)
+            .filter(
+                Account.green_id_instance == bindparam(
+                    "green_id_instance_param",
+                    value=instance_id,
+                    type_=String(),
+                )
+            )
             .first()
         )
 
