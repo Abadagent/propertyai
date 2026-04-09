@@ -1,7 +1,8 @@
 import time
 import traceback
 from datetime import datetime, timedelta, UTC
-from sqlalchemy import or_, func
+
+from sqlalchemy import or_
 
 from app.core.db import SessionLocal
 from app.models.webhook_event import WebhookEvent
@@ -47,27 +48,33 @@ def process_one_event(db, event: WebhookEvent):
     print(f"PROCESSING EVENT: id={event.id}, chat_id={event.chat_id}, retry_count={event.retry_count}")
 
     payload = event.payload_json or {}
+
+    type_webhook = payload.get("typeWebhook")
+    if type_webhook != "incomingMessageReceived":
+        print(f"SKIP NON-INCOMING: event_id={event.id}, typeWebhook={type_webhook}")
+        event.status = "done"
+        event.processed_at = datetime.now(UTC)
+        event.error_text = None
+        db.commit()
+        return
+
     incoming_text = extract_text_from_event(payload)
     print(f"INCOMING TEXT: {incoming_text}")
 
     if not event.instance_id:
         raise Exception("event.instance_id is empty")
 
-    # Если green_id_instance хранится как integer в БД — оставь int(...)
-    # Если как string — лучше сравнивать как string.
-    try:
-        instance_id_int = int(str(event.instance_id).strip())
-    except Exception:
-        raise Exception(f"invalid instance_id: {event.instance_id}")
+    instance_id_str = str(event.instance_id).strip()
+    print(f"LOOKING ACCOUNT BY instance_id={instance_id_str}")
 
     account = (
         db.query(Account)
-        .filter(Account.green_id_instance == instance_id_int)
+        .filter(Account.green_id_instance == instance_id_str)
         .first()
     )
 
     if not account:
-        raise Exception(f"Account not found for instance_id={event.instance_id}")
+        raise Exception(f"Account not found for instance_id={instance_id_str}")
 
     if not account.green_api_token:
         raise Exception("green_api_token is empty")
@@ -87,7 +94,7 @@ def process_one_event(db, event: WebhookEvent):
     print(f"BOT REPLY: {reply_text}")
 
     send_result = send_message(
-        id_instance=str(account.green_id_instance),
+        id_instance=instance_id_str,
         api_token=account.green_api_token,
         chat_id=event.chat_id,
         message=reply_text,
@@ -133,7 +140,6 @@ def run_worker():
 
             for event in events:
                 try:
-                    # дополнительная защита: не обрабатываем уже processing/done
                     fresh_event = db.query(WebhookEvent).filter(WebhookEvent.id == event.id).first()
                     if not fresh_event:
                         print(f"EVENT NOT FOUND: id={event.id}")
@@ -158,7 +164,6 @@ def run_worker():
                         failed_event.retry_count = (failed_event.retry_count or 0) + 1
                         failed_event.status = "failed"
                         failed_event.error_text = str(e)[:1000]
-                        # processed_at на failed лучше не трогать
                         db.commit()
 
                     print(f"SEND FAILED: event_id={event.id}, error={e}")
