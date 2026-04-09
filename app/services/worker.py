@@ -4,7 +4,7 @@ import time
 import traceback
 from datetime import datetime, timedelta, UTC
 
-from sqlalchemy import or_
+from sqlalchemy import or_, bindparam, String
 
 from app.core.db import SessionLocal
 from app.models.webhook_event import WebhookEvent
@@ -66,15 +66,18 @@ def process_one_event(db, event: WebhookEvent):
     if not event.instance_id:
         raise Exception("event.instance_id is empty")
 
-    print(f"INSTANCE_ID TYPE: {type(event.instance_id)} VALUE: {event.instance_id}")
-
     instance_id_str = str(event.instance_id).strip()
     print(f"INSTANCE_ID_STR TYPE: {type(instance_id_str)} VALUE: {instance_id_str}")
-    print(f"LOOKING ACCOUNT BY instance_id={instance_id_str}")
 
     account = (
         db.query(Account)
-        .filter(Account.green_id_instance == instance_id_str)
+        .filter(
+            Account.green_id_instance == bindparam(
+                "green_id_instance_param",
+                value=instance_id_str,
+                type_=String(),
+            )
+        )
         .first()
     )
 
