@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 import threading
+from datetime import datetime
 
 from app.models import *
 from app.core.db import Base, engine, SessionLocal
@@ -38,9 +39,21 @@ def root():
 def test_db():
     db = SessionLocal()
     try:
-        acc = Account(name="test")
+        unique_email = f"test_{int(datetime.utcnow().timestamp())}@test.com"
+
+        acc = Account(
+            email=unique_email,
+            password_hash="test_hash_123"
+        )
+
         db.add(acc)
         db.commit()
-        return {"status": "created"}
+        db.refresh(acc)
+
+        return {
+            "status": "created",
+            "id": acc.id,
+            "email": acc.email
+        }
     finally:
         db.close()
