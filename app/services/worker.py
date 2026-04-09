@@ -1,6 +1,7 @@
 import time
 import traceback
 from datetime import datetime, timedelta, UTC
+from sqlalchemy import or_, func
 
 from app.core.db import SessionLocal
 from app.models.webhook_event import WebhookEvent
@@ -21,11 +22,6 @@ def extract_text_from_event(payload: dict) -> str:
 
 
 def should_skip_duplicate_reply(db, event: WebhookEvent) -> bool:
-    """
-    Защита от дублей:
-    если по этому chat_id уже был успешно обработанный auto-reply
-    за последние 60 секунд, новый такой же не отправляем.
-    """
     if not event.chat_id:
         return False
 
@@ -54,9 +50,19 @@ def process_one_event(db, event: WebhookEvent):
     incoming_text = extract_text_from_event(payload)
     print(f"INCOMING TEXT: {incoming_text}")
 
+    if not event.instance_id:
+        raise Exception("event.instance_id is empty")
+
+    # Если green_id_instance хранится как integer в БД — оставь int(...)
+    # Если как string — лучше сравнивать как string.
+    try:
+        instance_id_int = int(str(event.instance_id).strip())
+    except Exception:
+        raise Exception(f"invalid instance_id: {event.instance_id}")
+
     account = (
         db.query(Account)
-        .filter(Account.green_id_instance == int(event.instance_id))
+        .filter(Account.green_id_instance == instance_id_int)
         .first()
     )
 
@@ -66,10 +72,14 @@ def process_one_event(db, event: WebhookEvent):
     if not account.green_api_token:
         raise Exception("green_api_token is empty")
 
+    if not event.chat_id:
+        raise Exception("event.chat_id is empty")
+
     if should_skip_duplicate_reply(db, event):
         print(f"SKIP DUPLICATE REPLY: event_id={event.id}, chat_id={event.chat_id}")
         event.status = "done"
         event.processed_at = datetime.now(UTC)
+        event.error_text = None
         db.commit()
         return
 
@@ -87,6 +97,7 @@ def process_one_event(db, event: WebhookEvent):
 
     event.status = "done"
     event.processed_at = datetime.now(UTC)
+    event.error_text = None
     db.commit()
 
     print(f"EVENT DONE: id={event.id}")
@@ -103,12 +114,17 @@ def run_worker():
                 db.query(WebhookEvent)
                 .filter(
                     WebhookEvent.status.in_(["pending", "failed"]),
-                    WebhookEvent.retry_count < 3,
+                    or_(
+                        WebhookEvent.retry_count.is_(None),
+                        WebhookEvent.retry_count < 3,
+                    ),
                 )
                 .order_by(WebhookEvent.created_at.asc())
                 .limit(10)
                 .all()
             )
+
+            print(f"FOUND EVENTS: {len(events)}")
 
             if not events:
                 db.close()
@@ -117,22 +133,32 @@ def run_worker():
 
             for event in events:
                 try:
-                    event.status = "processing"
+                    # дополнительная защита: не обрабатываем уже processing/done
+                    fresh_event = db.query(WebhookEvent).filter(WebhookEvent.id == event.id).first()
+                    if not fresh_event:
+                        print(f"EVENT NOT FOUND: id={event.id}")
+                        continue
+
+                    if fresh_event.status not in ("pending", "failed"):
+                        print(f"SKIP EVENT WITH STATUS={fresh_event.status}: id={fresh_event.id}")
+                        continue
+
+                    fresh_event.status = "processing"
+                    fresh_event.error_text = None
                     db.commit()
 
-                    process_one_event(db, event)
+                    process_one_event(db, fresh_event)
 
                 except Exception as e:
                     traceback.print_exc()
-
                     db.rollback()
 
-                    fresh_event = db.query(WebhookEvent).filter(WebhookEvent.id == event.id).first()
-                    if fresh_event:
-                        fresh_event.retry_count = (fresh_event.retry_count or 0) + 1
-                        fresh_event.status = "failed"
-                        fresh_event.error_text = str(e)[:1000]
-                        fresh_event.processed_at = datetime.now(UTC)
+                    failed_event = db.query(WebhookEvent).filter(WebhookEvent.id == event.id).first()
+                    if failed_event:
+                        failed_event.retry_count = (failed_event.retry_count or 0) + 1
+                        failed_event.status = "failed"
+                        failed_event.error_text = str(e)[:1000]
+                        # processed_at на failed лучше не трогать
                         db.commit()
 
                     print(f"SEND FAILED: event_id={event.id}, error={e}")
