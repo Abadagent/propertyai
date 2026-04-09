@@ -1,5 +1,4 @@
 from fastapi import FastAPI
-import threading
 
 from app.models import *
 from app.core.db import Base, engine
@@ -11,15 +10,10 @@ from app.api.auth import router as auth_router
 from app.api.account import router as account_router
 from app.api.payment import router as payment_router
 
-from app.services.worker import run_worker
-
 
 app = FastAPI()
 
 Base.metadata.create_all(bind=engine)
-
-worker_thread = threading.Thread(target=run_worker, daemon=True)
-worker_thread.start()
 
 app.include_router(green_router)
 app.include_router(chat_router)
