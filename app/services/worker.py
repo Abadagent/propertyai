@@ -1,3 +1,5 @@
+print("WORKER FILE LOADED")
+
 import time
 import traceback
 from datetime import datetime, timedelta, UTC
@@ -64,7 +66,10 @@ def process_one_event(db, event: WebhookEvent):
     if not event.instance_id:
         raise Exception("event.instance_id is empty")
 
+    print(f"INSTANCE_ID TYPE: {type(event.instance_id)} VALUE: {event.instance_id}")
+
     instance_id_str = str(event.instance_id).strip()
+    print(f"INSTANCE_ID_STR TYPE: {type(instance_id_str)} VALUE: {instance_id_str}")
     print(f"LOOKING ACCOUNT BY instance_id={instance_id_str}")
 
     account = (
@@ -176,5 +181,6 @@ def run_worker():
 
         time.sleep(2)
 
+
 if __name__ == "__main__":
-    run_worker()        
+    run_worker()
