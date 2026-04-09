@@ -1,0 +1,40 @@
+2026-04-03T11:33:01.870047 | POST /webhook/green called
+2026-04-03T11:33:01.871117 | {'typeWebhook': 'incomingMessageReceived', 'idMessage': '3A871A53B9741D509F40', 'instanceData': {'idInstance': 7107545046, 'wid': '77772702549@c.us', 'typeInstance': 'whatsapp'}, 'timestamp': 1775195972, 'senderData': {'chatId': '77028880459@c.us', 'sender': '77028880459@c.us', 'senderName': '🇰🇿', 'senderContactName': '', 'chatName': '🇰🇿'}, 'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': 'Салем'}}}
+2026-04-03T11:33:01.872165 | CHAT_ID=77028880459@c.us
+2026-04-03T11:33:01.872686 | TYPE_MESSAGE=textMessage
+2026-04-03T11:33:01.873205 | TEXT=Салем
+2026-04-03T11:33:02.709685 | SEND_MESSAGE STATUS=200
+2026-04-03T11:33:02.710697 | SEND_MESSAGE BODY={"idMessage":"3EB095FCFEFAF32D0406DF"}
+2026-04-03T11:33:03.262641 | POST /webhook/green called
+2026-04-03T11:33:03.263642 | {'typeWebhook': 'incomingMessageReceived', 'idMessage': '3A4A9E7F3CD53FC287A2', 'instanceData': {'idInstance': 7107545046, 'wid': '77772702549@c.us', 'typeInstance': 'whatsapp'}, 'timestamp': 1775196137, 'senderData': {'chatId': '77079409111@c.us', 'sender': '77079409111@c.us', 'senderName': 'Данияр', 'senderContactName': '', 'chatName': 'Данияр'}, 'messageData': {'typeMessage': 'extendedTextMessage', 'extendedTextMessageData': {'text': 'Здравствуйте!', 'description': '', 'title': '', 'previewType': 'None', 'jpegThumbnail': '', 'forwardingScore': 0, 'isForwarded': False}}}
+2026-04-03T11:33:03.264642 | CHAT_ID=77079409111@c.us
+2026-04-03T11:33:03.265642 | TYPE_MESSAGE=extendedTextMessage
+2026-04-03T11:33:03.266643 | TEXT=None
+2026-04-03T11:33:03.267645 | ERROR no text
+2026-04-03T11:33:03.914498 | POST /webhook/green called
+2026-04-03T11:33:03.915496 | {'typeWebhook': 'incomingMessageReceived', 'idMessage': '3A22D1CA72B66FB6F5E5', 'instanceData': {'idInstance': 7107545046, 'wid': '77772702549@c.us', 'typeInstance': 'whatsapp'}, 'timestamp': 1775196159, 'senderData': {'chatId': '77079409111@c.us', 'sender': '77079409111@c.us', 'senderName': 'Данияр', 'senderContactName': '', 'chatName': 'Данияр'}, 'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': 'Хотел заказать оценку'}}}
+2026-04-03T11:33:03.917496 | CHAT_ID=77079409111@c.us
+2026-04-03T11:33:03.918496 | TYPE_MESSAGE=textMessage
+2026-04-03T11:33:03.919496 | TEXT=Хотел заказать оценку
+2026-04-03T11:33:04.553364 | SEND_MESSAGE STATUS=200
+2026-04-03T11:33:04.554371 | SEND_MESSAGE BODY={"idMessage":"3EB0F184DD48B94BCD7F39"}
+2026-04-03T11:33:05.115831 | POST /webhook/green called
+2026-04-03T11:33:05.116799 | {'typeWebhook': 'incomingMessageReceived', 'idMessage': '3A23D2C639D9AF2AE19A', 'instanceData': {'idInstance': 7107545046, 'wid': '77772702549@c.us', 'typeInstance': 'whatsapp'}, 'timestamp': 1775197024, 'senderData': {'chatId': '77079409111@c.us', 'sender': '77079409111@c.us', 'senderName': 'Данияр', 'senderContactName': '', 'chatName': 'Данияр'}, 'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': 'Здравствуйте'}}}
+2026-04-03T11:33:05.118799 | CHAT_ID=77079409111@c.us
+2026-04-03T11:33:05.119800 | TYPE_MESSAGE=textMessage
+2026-04-03T11:33:05.121799 | TEXT=Здравствуйте
+2026-04-03T11:33:05.678361 | SEND_MESSAGE STATUS=200
+2026-04-03T11:33:05.679362 | SEND_MESSAGE BODY={"idMessage":"3EB0D724A650DC630F4FEC"}
+2026-04-03T11:33:06.235510 | POST /webhook/green called
+2026-04-03T11:33:06.236513 | {'typeWebhook': 'incomingMessageReceived', 'idMessage': 'ACAEE325D413C2119E1548A6238BF9C6', 'instanceData': {'idInstance': 7107545046, 'wid': '77772702549@c.us', 'typeInstance': 'whatsapp'}, 'timestamp': 1775197578, 'senderData': {'chatId': '77772241491@c.us', 'sender': '77772241491@c.us', 'senderName': 'Daniyar', 'senderContactName': '', 'chatName': 'Daniyar'}, 'messageData': {'typeMessage': 'extendedTextMessage', 'extendedTextMessageData': {'text': 'Здравствуйте', 'description': '', 'title': '', 'previewType': 'None', 'jpegThumbnail': '', 'forwardingScore': 0, 'isForwarded': False, 'entryPointConversionApp': 'whatsapp'}}}
+2026-04-03T11:33:06.238533 | CHAT_ID=77772241491@c.us
+2026-04-03T11:33:06.239535 | TYPE_MESSAGE=extendedTextMessage
+2026-04-03T11:33:06.240535 | TEXT=None
+2026-04-03T11:33:06.241536 | ERROR no text
+2026-04-03T11:34:16.497135 | POST /webhook/green called
+2026-04-03T11:34:16.498146 | {'typeWebhook': 'incomingMessageReceived', 'idMessage': '3EB0B9531CCEB29BDB7A9A', 'instanceData': {'idInstance': 7107545046, 'wid': '77772702549@c.us', 'typeInstance': 'whatsapp'}, 'timestamp': 1775198055, 'senderData': {'chatId': '77079409111@c.us', 'sender': '77079409111@c.us', 'senderName': 'Данияр', 'senderContactName': '', 'chatName': 'Данияр'}, 'messageData': {'typeMessage': 'textMessage', 'textMessageData': {'textMessage': 'Здравствуйте'}}}
+2026-04-03T11:34:16.500140 | CHAT_ID=77079409111@c.us
+2026-04-03T11:34:16.501153 | TYPE_MESSAGE=textMessage
+2026-04-03T11:34:16.503154 | TEXT=Здравствуйте
+2026-04-03T11:34:17.116119 | SEND_MESSAGE STATUS=200
+2026-04-03T11:34:17.118121 | SEND_MESSAGE BODY={"idMessage":"3EB06A932988658B54E4B0"}
