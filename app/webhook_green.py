@@ -26,7 +26,7 @@ async def webhook_green_post(request: Request):
             return {"status": "ignored"}
 
         raw_instance_id = data.get("instanceData", {}).get("idInstance") or data.get("instanceId")
-        message_id = data.get("idMessage")
+        raw_message_id = data.get("idMessage")
 
         sender_data = data.get("senderData", {})
         chat_id = sender_data.get("chatId")
@@ -38,25 +38,27 @@ async def webhook_green_post(request: Request):
         print(
             "PARSED:",
             {
-                "instance_id": raw_instance_id,
-                "message_id": message_id,
+                "raw_instance_id": raw_instance_id,
+                "raw_instance_id_type": str(type(raw_instance_id)),
+                "raw_message_id": raw_message_id,
                 "chat_id": chat_id,
                 "incoming_text": incoming_text,
             },
         )
 
-        if not raw_instance_id or not message_id:
+        if raw_instance_id is None or raw_message_id is None:
             print("BAD DATA: missing instance_id or message_id")
             return {"status": "bad_data"}
 
         instance_id = str(raw_instance_id).strip()
-        message_id = str(message_id).strip()
+        message_id = str(raw_message_id).strip()
 
-        print(f"LOOKING ACCOUNT BY instance_id={instance_id}")
+        print(f"INSTANCE_ID VALUE={instance_id} TYPE={type(instance_id)}")
+        print(f"MESSAGE_ID VALUE={message_id} TYPE={type(message_id)}")
 
         account = (
             db.query(Account)
-            .filter(Account.green_id_instance == instance_id)
+            .filter(Account.green_id_instance == str(instance_id))
             .first()
         )
 
@@ -85,8 +87,8 @@ async def webhook_green_post(request: Request):
         existing = (
             db.query(WebhookEvent)
             .filter(
-                WebhookEvent.instance_id == instance_id,
-                WebhookEvent.external_message_id == message_id,
+                WebhookEvent.instance_id == str(instance_id),
+                WebhookEvent.external_message_id == str(message_id),
             )
             .first()
         )
@@ -96,8 +98,8 @@ async def webhook_green_post(request: Request):
             return {"status": "duplicate"}
 
         event = WebhookEvent(
-            instance_id=instance_id,
-            external_message_id=message_id,
+            instance_id=str(instance_id),
+            external_message_id=str(message_id),
             chat_id=chat_id,
             payload_json=data,
             status="pending",
