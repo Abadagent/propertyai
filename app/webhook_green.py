@@ -1,11 +1,14 @@
 from fastapi import APIRouter, Request
+import os
 import traceback
 
 from app.core.db import SessionLocal
 from app.models.account import Account
 from app.models.webhook_event import WebhookEvent
 
-print("WEBHOOK_GREEN VERSION: STRING_CAST_V3")
+print("WEBHOOK_GREEN LOADED FROM:", __file__)
+print("WEBHOOK_GREEN PID:", os.getpid())
+print("WEBHOOK_GREEN VERSION: FORCE_DEBUG_V4")
 
 router = APIRouter()
 
@@ -21,6 +24,7 @@ async def webhook_green_post(request: Request):
 
     try:
         data = await request.json()
+        print("WEBHOOK_GREEN VERSION INSIDE REQUEST: FORCE_DEBUG_V4")
         print("WEBHOOK DATA:", data)
 
         if data.get("typeWebhook") != "incomingMessageReceived":
@@ -53,15 +57,19 @@ async def webhook_green_post(request: Request):
             print("BAD DATA: missing instance_id or message_id")
             return {"status": "bad_data"}
 
-        instance_id = f"{raw_instance_id}".strip()
-        message_id = f"{raw_message_id}".strip()
+        instance_id = str(raw_instance_id).strip()
+        message_id = str(raw_message_id).strip()
 
-        print("INSTANCE_ID AFTER CAST:", instance_id, type(instance_id))
-        print("MESSAGE_ID AFTER CAST:", message_id, type(message_id))
+        print("INSTANCE_ID AFTER CAST:", repr(instance_id), type(instance_id))
+        print("MESSAGE_ID AFTER CAST:", repr(message_id), type(message_id))
+
+        # Временная жёсткая проверка
+        if not isinstance(instance_id, str):
+            raise Exception(f"instance_id is not str after cast: {type(instance_id)}")
 
         account = (
             db.query(Account)
-            .filter(Account.green_id_instance == f"{instance_id}")
+            .filter(Account.green_id_instance == instance_id)
             .first()
         )
 
@@ -90,8 +98,8 @@ async def webhook_green_post(request: Request):
         existing = (
             db.query(WebhookEvent)
             .filter(
-                WebhookEvent.instance_id == f"{instance_id}",
-                WebhookEvent.external_message_id == f"{message_id}",
+                WebhookEvent.instance_id == instance_id,
+                WebhookEvent.external_message_id == message_id,
             )
             .first()
         )
@@ -101,8 +109,8 @@ async def webhook_green_post(request: Request):
             return {"status": "duplicate"}
 
         event = WebhookEvent(
-            instance_id=f"{instance_id}",
-            external_message_id=f"{message_id}",
+            instance_id=instance_id,
+            external_message_id=message_id,
             chat_id=chat_id,
             payload_json=data,
             status="pending",
