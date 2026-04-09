@@ -19,8 +19,10 @@ async def webhook_green_post(request: Request):
 
     try:
         data = await request.json()
+        print("WEBHOOK DATA:", data)
 
         if data.get("typeWebhook") != "incomingMessageReceived":
+            print("IGNORED: not incomingMessageReceived")
             return {"status": "ignored"}
 
         instance_id = data.get("instanceData", {}).get("idInstance") or data.get("instanceId")
@@ -29,7 +31,14 @@ async def webhook_green_post(request: Request):
         sender_data = data.get("senderData", {})
         chat_id = sender_data.get("chatId")
 
+        print("PARSED:", {
+            "instance_id": instance_id,
+            "message_id": message_id,
+            "chat_id": chat_id
+        })
+
         if not instance_id or not message_id:
+            print("BAD DATA: missing instance_id or message_id")
             return {"status": "bad_data"}
 
         instance_id = str(instance_id)
@@ -42,12 +51,22 @@ async def webhook_green_post(request: Request):
         )
 
         if not account:
+            print("ACCOUNT NOT FOUND:", instance_id)
             return {"status": "account_not_found"}
 
+        print("ACCOUNT FOUND:", {
+            "id": account.id,
+            "email": account.email,
+            "subscription_active": account.subscription_active,
+            "is_paused": account.is_paused
+        })
+
         if account.is_paused:
+            print("BOT PAUSED")
             return {"status": "bot_paused"}
 
         if not account.subscription_active:
+            print("SUBSCRIPTION INACTIVE")
             return {"status": "subscription_inactive"}
 
         existing = (
@@ -60,6 +79,7 @@ async def webhook_green_post(request: Request):
         )
 
         if existing:
+            print("DUPLICATE MESSAGE:", message_id)
             return {"status": "duplicate"}
 
         event = WebhookEvent(
@@ -72,6 +92,12 @@ async def webhook_green_post(request: Request):
 
         db.add(event)
         db.commit()
+
+        print("EVENT QUEUED:", {
+            "instance_id": instance_id,
+            "message_id": message_id,
+            "chat_id": chat_id
+        })
 
         return {"status": "queued"}
 
