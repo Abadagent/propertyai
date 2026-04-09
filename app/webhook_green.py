@@ -1,16 +1,9 @@
 from fastapi import APIRouter, Request
-import os
 import traceback
-
-from sqlalchemy import bindparam, String
 
 from app.core.db import SessionLocal
 from app.models.account import Account
 from app.models.webhook_event import WebhookEvent
-
-print("WEBHOOK_GREEN LOADED FROM:", __file__)
-print("WEBHOOK_GREEN PID:", os.getpid())
-print("WEBHOOK_GREEN VERSION: BINDPARAM_STRING_V5")
 
 router = APIRouter()
 
@@ -26,7 +19,6 @@ async def webhook_green_post(request: Request):
 
     try:
         data = await request.json()
-        print("WEBHOOK_GREEN VERSION INSIDE REQUEST: BINDPARAM_STRING_V5")
         print("WEBHOOK DATA:", data)
 
         if data.get("typeWebhook") != "incomingMessageReceived":
@@ -34,7 +26,7 @@ async def webhook_green_post(request: Request):
             return {"status": "ignored"}
 
         raw_instance_id = data.get("instanceData", {}).get("idInstance") or data.get("instanceId")
-        raw_message_id = data.get("idMessage")
+        message_id = data.get("idMessage")
 
         sender_data = data.get("senderData", {})
         chat_id = sender_data.get("chatId")
@@ -46,34 +38,23 @@ async def webhook_green_post(request: Request):
         print(
             "PARSED:",
             {
-                "raw_instance_id": raw_instance_id,
-                "raw_instance_id_type": str(type(raw_instance_id)),
-                "raw_message_id": raw_message_id,
-                "raw_message_id_type": str(type(raw_message_id)),
+                "instance_id": raw_instance_id,
+                "message_id": message_id,
                 "chat_id": chat_id,
                 "incoming_text": incoming_text,
             },
         )
 
-        if raw_instance_id is None or raw_message_id is None:
+        if not raw_instance_id or not message_id:
             print("BAD DATA: missing instance_id or message_id")
             return {"status": "bad_data"}
 
         instance_id = str(raw_instance_id).strip()
-        message_id = str(raw_message_id).strip()
-
-        print("INSTANCE_ID AFTER CAST:", repr(instance_id), type(instance_id))
-        print("MESSAGE_ID AFTER CAST:", repr(message_id), type(message_id))
+        message_id = str(message_id).strip()
 
         account = (
             db.query(Account)
-            .filter(
-                Account.green_id_instance == bindparam(
-                    "green_id_instance_param",
-                    value=instance_id,
-                    type_=String(),
-                )
-            )
+            .filter(Account.green_id_instance == instance_id)
             .first()
         )
 
