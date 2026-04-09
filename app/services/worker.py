@@ -1,71 +1,95 @@
 import time
 import traceback
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, UTC
 
 from app.core.db import SessionLocal
 from app.models.webhook_event import WebhookEvent
 from app.models.account import Account
-from app.services.chat_logic import process_message
 from app.services.green_api import send_message
 
 
-def send_with_retry(account, chat_id, text, retries=3):
-    last_error = None
-
-    for attempt in range(retries):
-        try:
-            send_message(
-                id_instance=str(account.green_id_instance),
-                api_token=account.green_api_token,
-                chat_id=chat_id,
-                text=text
-            )
-            return True
-        except Exception as e:
-            last_error = e
-            time.sleep(1 * (attempt + 1))
-
-    raise last_error
+AUTO_REPLY_TEXT = "Подскажите, пожалуйста: вас интересует покупка, аренда или продажа недвижимости?"
 
 
-def extract_text_from_payload(payload):
-    sender_data = payload.get("senderData", {})
-    message_data = payload.get("messageData", {})
-
-    chat_id = sender_data.get("chatId")
-
-    text = None
-    if message_data.get("typeMessage") == "textMessage":
-        text = message_data.get("textMessageData", {}).get("textMessage")
-    elif message_data.get("typeMessage") == "extendedTextMessage":
-        text = message_data.get("extendedTextMessageData", {}).get("text")
-
-    return chat_id, text
+def extract_text_from_event(payload: dict) -> str:
+    try:
+        message_data = payload.get("messageData", {})
+        text_message_data = message_data.get("textMessageData", {})
+        return (text_message_data.get("textMessage") or "").strip()
+    except Exception:
+        return ""
 
 
-def is_duplicate_message(db, current_event, green_instance_id, chat_id, text):
-    five_seconds_ago = datetime.utcnow() - timedelta(seconds=5)
+def should_skip_duplicate_reply(db, event: WebhookEvent) -> bool:
+    """
+    Защита от дублей:
+    если по этому chat_id уже был успешно обработанный auto-reply
+    за последние 60 секунд, новый такой же не отправляем.
+    """
+    if not event.chat_id:
+        return False
 
-    recent = (
+    one_minute_ago = datetime.now(UTC) - timedelta(seconds=60)
+
+    recent_done = (
         db.query(WebhookEvent)
         .filter(
-            WebhookEvent.instance_id == str(green_instance_id),
-            WebhookEvent.chat_id == chat_id,
-            WebhookEvent.created_at >= five_seconds_ago,
-            WebhookEvent.id != current_event.id,
-            WebhookEvent.status.in_(["done", "processing"])
+            WebhookEvent.chat_id == event.chat_id,
+            WebhookEvent.status == "done",
+            WebhookEvent.processed_at.isnot(None),
+            WebhookEvent.processed_at >= one_minute_ago,
+            WebhookEvent.id != event.id,
         )
-        .all()
+        .order_by(WebhookEvent.processed_at.desc())
+        .first()
     )
 
-    current_text = text.strip().lower()
+    return recent_done is not None
 
-    for r in recent:
-        _, old_text = extract_text_from_payload(r.payload_json)
-        if old_text and old_text.strip().lower() == current_text:
-            return True
 
-    return False
+def process_one_event(db, event: WebhookEvent):
+    print(f"PROCESSING EVENT: id={event.id}, chat_id={event.chat_id}, retry_count={event.retry_count}")
+
+    payload = event.payload_json or {}
+    incoming_text = extract_text_from_event(payload)
+    print(f"INCOMING TEXT: {incoming_text}")
+
+    account = (
+        db.query(Account)
+        .filter(Account.green_id_instance == int(event.instance_id))
+        .first()
+    )
+
+    if not account:
+        raise Exception(f"Account not found for instance_id={event.instance_id}")
+
+    if not account.green_api_token:
+        raise Exception("green_api_token is empty")
+
+    if should_skip_duplicate_reply(db, event):
+        print(f"SKIP DUPLICATE REPLY: event_id={event.id}, chat_id={event.chat_id}")
+        event.status = "done"
+        event.processed_at = datetime.now(UTC)
+        db.commit()
+        return
+
+    reply_text = AUTO_REPLY_TEXT
+    print(f"BOT REPLY: {reply_text}")
+
+    send_result = send_message(
+        id_instance=str(account.green_id_instance),
+        api_token=account.green_api_token,
+        chat_id=event.chat_id,
+        message=reply_text,
+    )
+
+    print(f"SEND RESULT: {send_result}")
+
+    event.status = "done"
+    event.processed_at = datetime.now(UTC)
+    db.commit()
+
+    print(f"EVENT DONE: id={event.id}")
 
 
 def run_worker():
@@ -79,7 +103,7 @@ def run_worker():
                 db.query(WebhookEvent)
                 .filter(
                     WebhookEvent.status.in_(["pending", "failed"]),
-                    WebhookEvent.retry_count < 3
+                    WebhookEvent.retry_count < 3,
                 )
                 .order_by(WebhookEvent.created_at.asc())
                 .limit(10)
@@ -87,127 +111,31 @@ def run_worker():
             )
 
             if not events:
+                db.close()
                 time.sleep(2)
                 continue
 
             for event in events:
                 try:
-                    if event.status != "processing":
-                        event.status = "processing"
-                        db.commit()
-                        db.refresh(event)
+                    event.status = "processing"
+                    db.commit()
 
-                    account = (
-                        db.query(Account)
-                        .filter(Account.green_id_instance == str(event.instance_id))
-                        .first()
-                    )
-
-                    if not account:
-                        event.status = "failed"
-                        event.error_text = f"account_not_found: {event.instance_id}"
-                        event.retry_count += 1
-                        if event.retry_count >= 3:
-                            event.processed_at = datetime.utcnow()
-                        db.commit()
-                        continue
-
-                    if account.is_paused:
-                        event.status = "done"
-                        event.error_text = "bot_paused"
-                        event.processed_at = datetime.utcnow()
-                        db.commit()
-                        continue
-
-                    if not account.subscription_active:
-                        event.status = "done"
-                        event.error_text = "subscription_inactive"
-                        event.processed_at = datetime.utcnow()
-                        db.commit()
-                        continue
-
-                    chat_id, text = extract_text_from_payload(event.payload_json)
-
-                    if not chat_id or not text:
-                        event.status = "done"
-                        event.error_text = None
-                        event.processed_at = datetime.utcnow()
-                        db.commit()
-                        continue
-
-                    if is_duplicate_message(
-                        db=db,
-                        current_event=event,
-                        green_instance_id=event.instance_id,
-                        chat_id=chat_id,
-                        text=text
-                    ):
-                        event.status = "done"
-                        event.error_text = "duplicate_message"
-                        event.processed_at = datetime.utcnow()
-                        db.commit()
-                        continue
-
-                    if account.messages_used >= account.messages_limit:
-                        try:
-                            send_with_retry(
-                                account,
-                                chat_id,
-                                "❌ Лимит сообщений исчерпан. Обратитесь к менеджеру."
-                            )
-                            event.status = "done"
-                            event.error_text = "limit_reached"
-                            event.processed_at = datetime.utcnow()
-                            db.commit()
-                        except Exception as e:
-                            event.status = "failed"
-                            event.error_text = f"limit_send_failed: {str(e)}"
-                            event.retry_count += 1
-                            if event.retry_count >= 3:
-                                event.processed_at = datetime.utcnow()
-                            db.commit()
-                        continue
-
-                    result = process_message(
-                        db=db,
-                        account=account,
-                        phone=chat_id,
-                        text=text
-                    )
-
-                    reply = result.get("reply") if isinstance(result, dict) else None
-
-                    if not reply:
-                        reply = "Напишите, пожалуйста, что вас интересует 🙂"
-
-                    try:
-                        send_with_retry(account, chat_id, reply)
-
-                        account.messages_used += 1
-
-                        event.status = "done"
-                        event.error_text = None
-                        event.retry_count = 0
-                        event.processed_at = datetime.utcnow()
-
-                        db.commit()
-
-                    except Exception as e:
-                        event.status = "failed"
-                        event.error_text = f"send_failed: {str(e)}"
-                        event.retry_count += 1
-                        if event.retry_count >= 3:
-                            event.processed_at = datetime.utcnow()
-                        db.commit()
+                    process_one_event(db, event)
 
                 except Exception as e:
-                    event.status = "failed"
-                    event.error_text = str(e)
-                    event.retry_count += 1
-                    if event.retry_count >= 3:
-                        event.processed_at = datetime.utcnow()
-                    db.commit()
                     traceback.print_exc()
+
+                    db.rollback()
+
+                    fresh_event = db.query(WebhookEvent).filter(WebhookEvent.id == event.id).first()
+                    if fresh_event:
+                        fresh_event.retry_count = (fresh_event.retry_count or 0) + 1
+                        fresh_event.status = "failed"
+                        fresh_event.error_text = str(e)[:1000]
+                        fresh_event.processed_at = datetime.now(UTC)
+                        db.commit()
+
+                    print(f"SEND FAILED: event_id={event.id}, error={e}")
 
         except Exception:
             traceback.print_exc()
@@ -216,7 +144,3 @@ def run_worker():
             db.close()
 
         time.sleep(2)
-
-
-if __name__ == "__main__":
-    run_worker()
