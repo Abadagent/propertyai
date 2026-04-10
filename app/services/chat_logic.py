@@ -144,6 +144,10 @@ def normalize_text(text: str) -> str:
     return " ".join(text.strip().lower().split())
 
 
+def has_any(text: str, words: list[str]) -> bool:
+    return any(word in text for word in words)
+
+
 def is_question(text: str):
     text = normalize_text(text)
     return "?" in text or text.startswith(
@@ -156,10 +160,6 @@ def try_faq(text):
     if not answer:
         return None
     return {"reply": answer}
-
-
-def has_any(text: str, words: list[str]) -> bool:
-    return any(word in text for word in words)
 
 
 def is_payment_request(text: str) -> bool:
@@ -213,6 +213,181 @@ def block_reason_reply(reason: str) -> str:
     return unknown_block_reply()
 
 
+def is_greeting_only(text: str) -> bool:
+    text = normalize_text(text)
+
+    greetings = [
+        "салем",
+        "салам",
+        "привет",
+        "здравствуйте",
+        "здрасьте",
+        "добрый день",
+        "добрый вечер",
+        "доброе утро",
+        "хай",
+        "hello",
+        "hi",
+        "ассаламу алейкум",
+        "алейкум салам",
+    ]
+
+    return text in greetings
+
+
+def looks_offtopic(text: str) -> bool:
+    text = normalize_text(text)
+
+    obvious_offtopic = [
+        "хлеб",
+        "морожен",
+        "клубник",
+        "напитк",
+        "пицц",
+        "шаурм",
+        "погода",
+        "анекдот",
+        "кофе",
+        "чай",
+        "еда",
+        "продукт",
+        "яблок",
+        "банан",
+        "доставка еды",
+    ]
+    return has_any(text, obvious_offtopic)
+
+
+def contains_location_markers(text: str) -> bool:
+    text = normalize_text(text)
+
+    location_words = [
+        "район",
+        "мкр",
+        "микрорайон",
+        "улица",
+        "ул",
+        "проспект",
+        "пр",
+        "город",
+        "жк",
+        "квартал",
+        "центр",
+        "левый берег",
+        "правый берег",
+        "алматы",
+        "астана",
+        "шымкент",
+        "караганда",
+        "актау",
+        "атырау",
+        "актобе",
+        "павлодар",
+        "костанай",
+        "усть-каменогорск",
+        "семей",
+        "тарaз",
+        "талдыкорган",
+        "туркестан",
+        "кызылорда",
+        "петропавловск",
+        "кокшетау",
+        "уральск",
+    ]
+
+    return has_any(text, location_words)
+
+
+def is_valid_district_answer(raw_text: str) -> bool:
+    text = normalize_text(raw_text)
+
+    if len(text) < 2:
+        return False
+
+    if is_greeting_only(text):
+        return False
+
+    if looks_offtopic(text):
+        return False
+
+    if parse_request_type(text):
+        return False
+
+    if parse_property_type(text):
+        return False
+
+    if parse_rooms(text):
+        return False
+
+    if parse_budget(text):
+        return False
+
+    if parse_purpose(text):
+        return False
+
+    if is_question(text):
+        return False
+
+    if contains_location_markers(text):
+        return True
+
+    # Разрешаем короткие реальные ответы вроде "нурсая", "самал", "ботанический"
+    words = text.split()
+    if len(words) <= 4 and all(len(w) >= 2 for w in words):
+        return True
+
+    return False
+
+
+def is_valid_rooms_answer(raw_text: str) -> bool:
+    text = normalize_text(raw_text)
+
+    if is_greeting_only(text):
+        return False
+
+    if looks_offtopic(text):
+        return False
+
+    parsed = parse_rooms(text)
+    return parsed is not None
+
+
+def is_valid_name_answer(raw_text: str) -> bool:
+    text = normalize_text(raw_text)
+
+    if len(text) < 2:
+        return False
+
+    if is_greeting_only(text):
+        return False
+
+    if looks_offtopic(text):
+        return False
+
+    if parse_request_type(text):
+        return False
+
+    if parse_property_type(text):
+        return False
+
+    if parse_rooms(text):
+        return False
+
+    if parse_budget(text):
+        return False
+
+    if parse_purpose(text):
+        return False
+
+    if contains_location_markers(text):
+        return False
+
+    if len(text.split()) > 4:
+        return False
+
+    return True
+
+
 # =====================
 # РАСПОЗНАВАНИЕ СМЫСЛА
 # =====================
@@ -253,15 +428,30 @@ def parse_property_type(text: str):
 def parse_rooms(text: str):
     text = normalize_text(text)
 
-    if has_any(text, ["не принцип", "неважно", "люб", "без разницы"]):
+    if has_any(text, ["не принцип", "неважно", "без разницы", "любое", "любая"]):
         return "не принципиально"
 
+    if text in ["1", "1к", "1 к"]:
+        return "1"
+
+    if text in ["2", "2к", "2 к"]:
+        return "2"
+
+    if text in ["3", "3к", "3 к"]:
+        return "3"
+
+    if text in ["4", "4к", "4 к"]:
+        return "4"
+
+    if text in ["5", "5+", "5 к", "5к"]:
+        return "5+"
+
     room_patterns = {
-        "1": ["1-ком", "1 ком", "1к", "одноком", "одна ком", "1 комнат"],
-        "2": ["2-ком", "2 ком", "2к", "двухком", "две ком", "2 комнат"],
-        "3": ["3-ком", "3 ком", "3к", "трехком", "трёхком", "3 комнат"],
-        "4": ["4-ком", "4 ком", "4к", "четырехком", "четырёхком", "4 комнат"],
-        "5+": ["5-ком", "5 ком", "5к", "многоком", "много комнат"],
+        "1": ["1-ком", "1 ком", "одноком", "одна ком", "1 комнат", "1 комнатную"],
+        "2": ["2-ком", "2 ком", "двухком", "две ком", "2 комнат", "2 комнатную"],
+        "3": ["3-ком", "3 ком", "трехком", "трёхком", "3 комнат", "3 комнатную"],
+        "4": ["4-ком", "4 ком", "четырехком", "четырёхком", "4 комнат", "4 комнатную"],
+        "5+": ["5-ком", "5 ком", "многоком", "много комнат", "5 комнат"],
     }
 
     for normalized, variants in room_patterns.items():
@@ -330,33 +520,14 @@ def parse_name(text: str):
         "напитки",
         "продукты",
     ]
+
     if normalize_text(text) in bad_variants:
         return None
 
+    if not is_valid_name_answer(text):
+        return None
+
     return text
-
-
-def looks_offtopic(text: str) -> bool:
-    text = normalize_text(text)
-
-    obvious_offtopic = [
-        "хлеб",
-        "морожен",
-        "клубник",
-        "напитк",
-        "пицц",
-        "шаурм",
-        "погода",
-        "анекдот",
-        "кофе",
-        "чай",
-        "еда",
-        "продукт",
-        "яблок",
-        "банан",
-        "доставка еды",
-    ]
-    return has_any(text, obvious_offtopic)
 
 
 # =====================
@@ -555,7 +726,7 @@ def process_message(db, account: Account, phone: str, text: str):
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_district":
-        if len(text) < 2 or looks_offtopic(text):
+        if not is_valid_district_answer(raw_text):
             if looks_offtopic(text):
                 return {"reply": off_topic_reply(fallback_district())}
             return {"reply": fallback_district()}
@@ -571,9 +742,7 @@ def process_message(db, account: Account, phone: str, text: str):
         if not parsed:
             if looks_offtopic(text):
                 return {"reply": off_topic_reply(fallback_rooms())}
-            if len(text) < 2:
-                return {"reply": fallback_rooms()}
-            parsed = raw_text
+            return {"reply": fallback_rooms()}
 
         conversation.rooms = parsed
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
