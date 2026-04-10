@@ -47,6 +47,13 @@ def final_reply():
     return "Спасибо 🙂 Я передал вашу заявку специалисту. Он свяжется с вами в ближайшее время."
 
 
+def early_lead_reply():
+    return (
+        "Отлично, уже есть основные параметры 🙌\n"
+        "Я передал заявку специалисту. Он подберёт варианты и свяжется с вами в ближайшее время."
+    )
+
+
 def fallback_request_type():
     return "Подскажите, пожалуйста: вас интересует покупка, аренда или продажа недвижимости?"
 
@@ -73,6 +80,10 @@ def fallback_purpose():
 
 def fallback_name():
     return "Как я могу к вам обращаться?"
+
+
+def soft_repeat_current_question(current_question: str):
+    return f"Давайте продолжим 🙂\n{current_question}"
 
 
 def off_topic_reply(current_question: str):
@@ -286,7 +297,7 @@ def contains_location_markers(text: str) -> bool:
         "костанай",
         "усть-каменогорск",
         "семей",
-        "тарaз",
+        "тараз",
         "талдыкорган",
         "туркестан",
         "кызылорда",
@@ -331,7 +342,6 @@ def is_valid_district_answer(raw_text: str) -> bool:
     if contains_location_markers(text):
         return True
 
-    # Разрешаем короткие реальные ответы вроде "нурсая", "самал", "ботанический"
     words = text.split()
     if len(words) <= 4 and all(len(w) >= 2 for w in words):
         return True
@@ -386,6 +396,44 @@ def is_valid_name_answer(raw_text: str) -> bool:
         return False
 
     return True
+
+
+def current_question_for_state(state: str) -> str:
+    mapping = {
+        "new": first_question(),
+        "asked_request_type": fallback_request_type(),
+        "asked_property_type": fallback_property_type(),
+        "asked_district": fallback_district(),
+        "asked_rooms": fallback_rooms(),
+        "asked_budget": fallback_budget(),
+        "asked_purpose": fallback_purpose(),
+        "asked_name": fallback_name(),
+    }
+    return mapping.get(state, first_question())
+
+
+def should_soft_repeat_current_question(raw_text: str, conversation) -> bool:
+    text = normalize_text(raw_text)
+
+    if not text:
+        return True
+
+    if is_greeting_only(text):
+        return True
+
+    if looks_offtopic(text):
+        return False
+
+    return False
+
+
+def is_ready_for_early_lead(conversation) -> bool:
+    return bool(
+        conversation.request_type
+        and conversation.property_type
+        and conversation.district
+        and conversation.budget
+    )
 
 
 # =====================
@@ -477,7 +525,7 @@ def parse_budget(text: str):
     if has_any(text, ["млн", "миллион", "тыс", "тенге", "тг", "$", "usd", "доллар", "в месяц", "ежемесячно"]):
         return text
 
-    if has_digits and len(text) >= 2:
+    if has_digits and len(text) >= 1:
         return text
 
     return None
@@ -615,6 +663,22 @@ def create_lead_from_conversation(db, account, conversation):
     send_lead_to_telegram(account, lead)
 
 
+def maybe_finish_early_lead(db, account, conversation):
+    if conversation.lead_sent:
+        return None
+
+    if not is_ready_for_early_lead(conversation):
+        return None
+
+    conversation.state = "waiting_manager"
+    conversation.lead_sent = True
+    db.commit()
+
+    create_lead_from_conversation(db, account, conversation)
+
+    return {"reply": early_lead_reply()}
+
+
 # =====================
 # ОСНОВНАЯ ЛОГИКА
 # =====================
@@ -691,6 +755,11 @@ def process_message(db, account: Account, phone: str, text: str):
     if conversation.state == "new":
         entities = extract_entities(raw_text)
         fill_conversation_from_entities(conversation, entities)
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
 
@@ -700,6 +769,9 @@ def process_message(db, account: Account, phone: str, text: str):
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_request_type":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_request_type())}
+
         parsed = parse_request_type(text)
         if not parsed:
             if looks_offtopic(text):
@@ -708,11 +780,19 @@ def process_message(db, account: Account, phone: str, text: str):
 
         conversation.request_type = parsed
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_property_type":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_property_type())}
+
         parsed = parse_property_type(text)
         if not parsed:
             if looks_offtopic(text):
@@ -721,11 +801,19 @@ def process_message(db, account: Account, phone: str, text: str):
 
         conversation.property_type = parsed
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_district":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_district())}
+
         if not is_valid_district_answer(raw_text):
             if looks_offtopic(text):
                 return {"reply": off_topic_reply(fallback_district())}
@@ -733,11 +821,19 @@ def process_message(db, account: Account, phone: str, text: str):
 
         conversation.district = raw_text
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_rooms":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_rooms())}
+
         parsed = parse_rooms(text)
         if not parsed:
             if looks_offtopic(text):
@@ -746,11 +842,19 @@ def process_message(db, account: Account, phone: str, text: str):
 
         conversation.rooms = parsed
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_budget":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_budget())}
+
         parsed = parse_budget(text)
         if not parsed:
             if looks_offtopic(text):
@@ -759,11 +863,19 @@ def process_message(db, account: Account, phone: str, text: str):
 
         conversation.budget = parsed
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_purpose":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_purpose())}
+
         parsed = parse_purpose(text)
         if not parsed:
             if looks_offtopic(text):
@@ -772,11 +884,19 @@ def process_message(db, account: Account, phone: str, text: str):
 
         conversation.purpose = parsed
         fill_conversation_from_entities(conversation, extract_entities(raw_text))
+
+        early_result = maybe_finish_early_lead(db, account, conversation)
+        if early_result:
+            return early_result
+
         next_question = get_next_question(conversation)
         db.commit()
         return {"reply": next_question or final_reply()}
 
     if conversation.state == "asked_name":
+        if should_soft_repeat_current_question(raw_text, conversation):
+            return {"reply": soft_repeat_current_question(fallback_name())}
+
         parsed = parse_name(raw_text)
         if not parsed:
             if looks_offtopic(text):
