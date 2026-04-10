@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Request
 import traceback
+from datetime import datetime, timedelta
 
 from app.core.db import SessionLocal
 from app.models.account import Account
@@ -101,8 +102,42 @@ async def webhook_green_post(request: Request):
         )
 
         if existing:
-            print("DUPLICATE MESSAGE:", message_id, flush=True)
+            print("DUPLICATE MESSAGE ID:", message_id, flush=True)
             return {"status": "duplicate"}
+
+        duplicate_window_start = datetime.utcnow() - timedelta(seconds=5)
+
+        recent_events = (
+            db.query(WebhookEvent)
+            .filter(
+                WebhookEvent.instance_id == instance_id,
+                WebhookEvent.chat_id == chat_id,
+                WebhookEvent.created_at >= duplicate_window_start,
+            )
+            .order_by(WebhookEvent.created_at.desc())
+            .all()
+        )
+
+        for recent_event in recent_events:
+            recent_payload = recent_event.payload_json or {}
+            recent_text = (
+                recent_payload.get("messageData", {})
+                .get("textMessageData", {})
+                .get("textMessage", "")
+                .strip()
+            )
+
+            if recent_text and recent_text == incoming_text:
+                print(
+                    "DUPLICATE MESSAGE CONTENT:",
+                    {
+                        "incoming_text": incoming_text,
+                        "current_message_id": message_id,
+                        "duplicate_of_message_id": recent_event.external_message_id,
+                    },
+                    flush=True,
+                )
+                return {"status": "duplicate_content"}
 
         event = WebhookEvent(
             instance_id=instance_id,
