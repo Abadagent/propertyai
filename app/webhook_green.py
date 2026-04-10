@@ -19,14 +19,14 @@ async def webhook_green_post(request: Request):
 
     try:
         data = await request.json()
-        print("WEBHOOK DATA:", data)
+        print("WEBHOOK DATA:", data, flush=True)
 
         if data.get("typeWebhook") != "incomingMessageReceived":
-            print("IGNORED: not incomingMessageReceived")
+            print("IGNORED: not incomingMessageReceived", flush=True)
             return {"status": "ignored"}
 
         raw_instance_id = data.get("instanceData", {}).get("idInstance") or data.get("instanceId")
-        message_id = data.get("idMessage")
+        raw_message_id = data.get("idMessage")
 
         sender_data = data.get("senderData", {})
         chat_id = sender_data.get("chatId")
@@ -39,18 +39,28 @@ async def webhook_green_post(request: Request):
             "PARSED:",
             {
                 "instance_id": raw_instance_id,
-                "message_id": message_id,
+                "message_id": raw_message_id,
                 "chat_id": chat_id,
                 "incoming_text": incoming_text,
             },
+            flush=True,
         )
 
-        if not raw_instance_id or not message_id:
-            print("BAD DATA: missing instance_id or message_id")
+        if raw_instance_id is None or raw_message_id is None:
+            print("BAD DATA: missing instance_id or message_id", flush=True)
             return {"status": "bad_data"}
 
         instance_id = str(raw_instance_id).strip()
-        message_id = str(message_id).strip()
+        message_id = str(raw_message_id).strip()
+
+        print(
+            "LOOKUP ACCOUNT:",
+            {
+                "instance_id": instance_id,
+                "instance_id_type": str(type(instance_id)),
+            },
+            flush=True,
+        )
 
         account = (
             db.query(Account)
@@ -59,7 +69,7 @@ async def webhook_green_post(request: Request):
         )
 
         if not account:
-            print("ACCOUNT NOT FOUND:", instance_id)
+            print("ACCOUNT NOT FOUND:", instance_id, flush=True)
             return {"status": "account_not_found"}
 
         print(
@@ -70,14 +80,15 @@ async def webhook_green_post(request: Request):
                 "subscription_active": account.subscription_active,
                 "is_paused": account.is_paused,
             },
+            flush=True,
         )
 
         if account.is_paused:
-            print("BOT PAUSED")
+            print("BOT PAUSED", flush=True)
             return {"status": "bot_paused"}
 
         if not account.subscription_active:
-            print("SUBSCRIPTION INACTIVE")
+            print("SUBSCRIPTION INACTIVE", flush=True)
             return {"status": "subscription_inactive"}
 
         existing = (
@@ -90,7 +101,7 @@ async def webhook_green_post(request: Request):
         )
 
         if existing:
-            print("DUPLICATE MESSAGE:", message_id)
+            print("DUPLICATE MESSAGE:", message_id, flush=True)
             return {"status": "duplicate"}
 
         event = WebhookEvent(
@@ -112,6 +123,7 @@ async def webhook_green_post(request: Request):
                 "message_id": message_id,
                 "chat_id": chat_id,
             },
+            flush=True,
         )
 
         return {"status": "queued"}
