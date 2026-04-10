@@ -4,10 +4,10 @@ from sqlalchemy.orm import sessionmaker, declarative_base
 
 DATABASE_URL = os.getenv("DATABASE_URL")
 
-if DATABASE_URL:
-    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://")
-else:
-    DATABASE_URL = "sqlite:///./test.db"
+if not DATABASE_URL:
+    raise Exception("DATABASE_URL is not set")
+
+DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg2://")
 
 engine = create_engine(DATABASE_URL)
 
